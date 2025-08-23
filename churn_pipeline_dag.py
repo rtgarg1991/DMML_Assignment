@@ -44,7 +44,6 @@ with DAG(
         _run([
             "python", "/home/airflow/gcs/dags/prepare_raw_data_from_sources.py",
             "--bucket", BUCKET,
-            "--run_id", run_id,
         ])
 
     def step_load_raw(**ctx):
