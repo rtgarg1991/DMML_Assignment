@@ -7,7 +7,7 @@ import io
 import re
 import glob
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 from google.cloud import storage
@@ -27,7 +27,7 @@ EXPECTED_COLS_SNAKE = [
     "phone_service","multiple_lines","internet_service","online_security",
     "online_backup","device_protection","tech_support","streaming_tv",
     "streaming_movies","contract","paperless_billing","payment_method",
-    "monthly_charges","total_charges","churn"
+    "monthly_charges","total_charges","churn", "ingest_date"
 ]
 
 def log(msg: str):
@@ -156,17 +156,41 @@ def upload_df_to_gcs_csv(df: pd.DataFrame, bucket: str, dest_path: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bucket", required=True, help="Target GCS bucket (no gs://). custom_data.csv should be in bucket root.")
+    ap.add_argument("--date", help="YYYY-MM-DD for ingest_date (BQ). Defaults to UTC today.")
+    ap.add_argument("--date_folder", help="dd-MM-YYYY for GCS path. Defaults to UTC today.")
+
     args = ap.parse_args()
 
     log("Starting raw data preparation…")
+    
+    date_iso = args.date or datetime.utcnow().strftime("%Y-%m-%d")
+    date_folder = args.date_folder or datetime.utcnow().strftime("%d-%m-%Y")
+    log(f"Using date={date_iso}, date_folder={date_folder}")
+
 
     kaggle_df = load_kaggle_df()
     custom_df = load_custom_from_gcs(args.bucket)
 
     combined = combine_and_assign_ids(kaggle_df, custom_df)
+    
+    # --- ensure numeric types match the BQ table ---
+    # integers
+    for col in ["customer_id", "senior_citizen", "tenure"]:
+        if col in combined.columns:
+            combined[col] = (
+                pd.to_numeric(combined[col], errors="coerce")
+                .round(0)
+                .astype("Int64")      # pandas nullable int (writes as integer, not 0.0)
+            )
 
-    date_str = datetime.now().strftime("%d-%m-%Y")
-    dest = f"{date_str}/churn_raw.csv"
+    # floats
+    for col in ["monthly_charges", "total_charges"]:
+        if col in combined.columns:
+            combined[col] = pd.to_numeric(combined[col], errors="coerce").astype("Float64")
+            
+    combined["ingest_date"] = date_iso    
+
+    dest = f"{date_folder}/churn_raw.csv"
     upload_df_to_gcs_csv(combined, args.bucket, dest)
 
     log("Preview (first 5 rows):")

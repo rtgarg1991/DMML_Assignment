@@ -31,9 +31,9 @@ SELECT
   SAFE_CAST(NULLIF(TRIM(CAST(total_charges AS STRING)), '') AS FLOAT64) AS total_charges,
   TRIM(churn) AS churn,
   IF(TRIM(churn) = 'Yes', 1, 0) AS churn_label,
-  CURRENT_DATE() AS ingest_date
+  DATE(@d) AS ingest_date
 FROM `{p}.{cd}.{raw}`
-WHERE customer_id IS NOT NULL AND ingest_date = CURRENT_DATE();
+WHERE customer_id IS NOT NULL AND ingest_date = DATE(@d);
 """
 
 INSERT_SQL_TMPL = """
@@ -66,9 +66,9 @@ SELECT
   SAFE_CAST(NULLIF(TRIM(CAST(total_charges AS STRING)), '') AS FLOAT64) AS total_charges,
   TRIM(churn) AS churn,
   IF(TRIM(churn) = 'Yes', 1, 0) AS churn_label,
-  CURRENT_DATE() AS ingest_date
+  DATE(@d) AS ingest_date
 FROM `{p}.{cd}.{raw}`
-WHERE customer_id IS NOT NULL AND ingest_date = CURRENT_DATE();
+WHERE customer_id IS NOT NULL AND ingest_date = DATE(@d);
 """
 
 CREATE_VIEW_SQL_TMPL = """
@@ -123,6 +123,7 @@ def main():
     ap.add_argument("--raw_table", required=True)
     ap.add_argument("--clean_table", required=True)
     ap.add_argument("--run_id", required=True)
+    ap.add_argument("--date", required=True, help="YYYY-MM-DD")
     args = ap.parse_args()
 
     client = bigquery.Client(project=args.project)
@@ -150,14 +151,18 @@ def main():
             sql = CREATE_TABLE_SQL_TMPL.format(
                 p=args.project, cd=args.dataset, raw=args.raw_table, clean=args.clean_table
             )
-            client.query(sql).result()
+            client.query(sql, job_config=bigquery.QueryJobConfig(
+                                query_parameters=[bigquery.ScalarQueryParameter("d", "DATE", args.date)])
+                         ).result()
             print(f"[info] Created table {args.clean_table} with today's data")
         else:
             # Subsequent run: append only today's partition
             sql = INSERT_SQL_TMPL.format(
                 p=args.project, cd=args.dataset, raw=args.raw_table, clean=args.clean_table
             )
-            client.query(sql).result()
+            client.query(sql, job_config=bigquery.QueryJobConfig(
+                                query_parameters=[bigquery.ScalarQueryParameter("d", "DATE", args.date)])
+                         ).result()
             print(f"[info] Appended today's partition to {args.clean_table}")
 
         # Create/update view

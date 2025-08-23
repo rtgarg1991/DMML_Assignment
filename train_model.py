@@ -181,11 +181,13 @@ def update_registry_failed(bq: bigquery.Client, project: str, dataset: str, run_
 
 # ---------------- Data / Training ----------------
 
-def load_features(project: str, dataset: str, table: str, today_only: bool = True) -> pd.DataFrame:
+def load_features(project: str, dataset: str, table: str, date: str, today_only: bool = True) -> pd.DataFrame:
     bq = bigquery.Client(project=project)
-    where_clause = "WHERE ingest_date = CURRENT_DATE()" if today_only else ""
+    where_clause = "WHERE ingest_date = Date(@d)" if today_only else ""
     sql = f"SELECT * EXCEPT(ingest_date) FROM `{project}.{dataset}.{table}` {where_clause}"
-    return bq.query(sql).to_dataframe(create_bqstorage_client=False)
+    return bq.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("d","DATE", date)])).to_dataframe(create_bqstorage_client=False)
+
+
 
 def train_and_eval(df: pd.DataFrame):
     y = df["churn_label"]
@@ -257,6 +259,8 @@ def main():
     ap.add_argument("--bucket", required=True)
     ap.add_argument("--run_id", required=True)
     ap.add_argument("--today_only", action="store_true", default=True)
+    ap.add_argument("--date", required=False)
+    ap.add_argument("--date_folder", required=False)
     args = ap.parse_args()
 
     bq = bigquery.Client(project=args.project)
@@ -274,7 +278,7 @@ def main():
         version = get_or_bind_version_for_run(bq, args.project, args.dataset, args.run_id)
 
         # Load data
-        df = load_features(args.project, args.dataset, args.features_table, today_only=args.today_only)
+        df = load_features(args.project, args.dataset, args.features_table, args.date, today_only=args.today_only)
         if df.empty:
             raise RuntimeError("No feature rows found for training (check today's partition).")
 
@@ -294,8 +298,8 @@ def main():
             json.dump(metrics_payload, f, indent=2)
 
         # Upload to GCS: gs://bucket/<dd-MM-YYYY>/output/model/
-        date_str = datetime.now().strftime("%d-%m-%Y")
-        dest_prefix = f"{date_str}/output/model"
+        
+        dest_prefix = f"{args.date_folder}/output/model"
         model_uri = upload_file_to_gcs(model_path, args.bucket, dest_prefix)
         metrics_uri = upload_file_to_gcs(metrics_path, args.bucket, dest_prefix)
 

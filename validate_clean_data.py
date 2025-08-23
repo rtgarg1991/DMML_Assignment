@@ -123,6 +123,8 @@ def main():
     ap.add_argument("--run_id", required=True)
     ap.add_argument("--today_only", action="store_true", default=True)
     ap.add_argument("--out_dir", default="./output")
+    ap.add_argument("--date", required=True)
+    ap.add_argument("--date_folder", required=True)
     args = ap.parse_args()
 
     client = bigquery.Client(project=args.project)
@@ -138,12 +140,14 @@ def main():
         assert_prev_success(client, args.project, args.dataset, args.run_id, "clean")
         write_status(client, args.project, args.dataset, args.run_id, step, "STARTED")
 
-        where_clause = "WHERE ingest_date = CURRENT_DATE()" if args.today_only else ""
+        where_clause = "WHERE ingest_date = DATE(@d)" if args.today_only else ""
 
         results = []
         for name, sql in QUERIES.items():
             q = sql.format(p=args.project, d=args.dataset, t=args.table, flt=where_clause)
-            df = client.query(q).to_dataframe()
+            df = client.query(q, job_config=bigquery.QueryJobConfig(
+                        query_parameters=[bigquery.ScalarQueryParameter("d","DATE", args.date)])
+                ).to_dataframe()
             # make JSON-safe
             payload = df.to_dict(orient="records")
             results.append({"check": name, "result": payload})
@@ -160,8 +164,7 @@ def main():
             print(f"{r['check']}: {json.dumps(r['result'], indent=2, default=str)}")
 
         # upload ONLY this run's temp dir
-        date_str = datetime.now().strftime("%d-%m-%Y")
-        base_prefix = f"{date_str}/output/"
+        base_prefix = f"{args.date_folder}/output/"
         upload_dir_to_gcs(tmp_dir, args.bucket, base_prefix)
         print(f"[done] Uploaded to gs://{args.bucket}/{base_prefix}")
 

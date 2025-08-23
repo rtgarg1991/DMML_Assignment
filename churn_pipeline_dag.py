@@ -6,6 +6,7 @@ from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
+import subprocess, textwrap
 
 PROJECT_ID   = os.environ.get("GCP_PROJECT") or Variable.get("GCP_PROJECT", default_var="YOUR_PROJECT_ID")
 BUCKET       = Variable.get("CHURN_BUCKET")                 # e.g. dmml_assignment
@@ -20,9 +21,16 @@ def _date_folder(execution_date: datetime) -> str:
     return execution_date.strftime("%d-%m-%Y")
 
 def _run(cmd: list[str]):
-    # Run a python script that lives in /home/airflow/gcs/dags/
     print("Running:", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+    # capture output so we see the real reason if it fails
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    # stream stdout/stderr into Airflow logs
+    if res.stdout:
+        print("---- STDOUT ----\n" + res.stdout)
+    if res.stderr:
+        print("---- STDERR ----\n" + res.stderr)
+    if res.returncode != 0:
+        raise RuntimeError(f"Command failed (rc={res.returncode}): {' '.join(cmd)}")
 
 default_args = {
     "owner": "you",
@@ -41,13 +49,19 @@ with DAG(
 
     def step_prepare_raw(**ctx):
         run_id = ctx["run_id"]
+        ds = ctx["ds"]
+        date_folder = ctx["execution_date"].strftime("%d-%m-%Y")
+        
         _run([
             "python", "/home/airflow/gcs/dags/prepare_raw_data_from_sources.py",
-            "--bucket", BUCKET,
+            "--bucket", BUCKET, 
+            "--date", ds,
+            "--date_folder", date_folder,
         ])
 
     def step_load_raw(**ctx):
         run_id = ctx["run_id"]
+        date_folder = ctx["execution_date"].strftime("%d-%m-%Y")
         _run([
             "python", "/home/airflow/gcs/dags/load_to_bigquery.py",
             "--project", PROJECT_ID,
@@ -55,10 +69,12 @@ with DAG(
             "--table", RAW_TABLE,
             "--bucket", BUCKET,
             "--run_id", run_id,
+            "--date_folder", date_folder
         ])
 
     def step_clean(**ctx):
         run_id = ctx["run_id"]
+        ds = ctx["ds"]
         _run([
             "python", "/home/airflow/gcs/dags/clean_raw_to_curated.py",
             "--project", PROJECT_ID,
@@ -66,10 +82,13 @@ with DAG(
             "--raw_table", RAW_TABLE,
             "--clean_table", CLEAN_TABLE,
             "--run_id", run_id,
+            "--date", ds,
         ])
 
     def step_validate(**ctx):
         run_id = ctx["run_id"]
+        ds = ctx["ds"]
+        date_folder = ctx["execution_date"].strftime("%d-%m-%Y")
         _run([
             "python", "/home/airflow/gcs/dags/validate_clean_data.py",
             "--project", PROJECT_ID,
@@ -77,10 +96,14 @@ with DAG(
             "--table", CLEAN_TABLE,
             "--bucket", BUCKET,
             "--run_id", run_id,
+            "--date", ds, 
+            "--date_folder", date_folder
         ])
 
     def step_eda(**ctx):
         run_id = ctx["run_id"]
+        ds = ctx["ds"]
+        date_folder = ctx["execution_date"].strftime("%d-%m-%Y")
         _run([
             "python", "/home/airflow/gcs/dags/exploratory_data_analysis_from_bq.py",
             "--project", PROJECT_ID,
@@ -88,10 +111,13 @@ with DAG(
             "--table", CLEAN_TABLE,
             "--bucket", BUCKET,
             "--run_id", run_id,
+            "--date", ds, 
+            "--date_folder", date_folder
         ])
 
     def step_features(**ctx):
         run_id = ctx["run_id"]
+        ds = ctx["ds"]
         _run([
             "python", "/home/airflow/gcs/dags/build_domain_driven_features.py",
             "--project", PROJECT_ID,
@@ -100,10 +126,13 @@ with DAG(
             "--features_table", FEATURES_TBL,
             "--run_id", run_id,
             "--gate_on", "validate_clean",
+            "--date", ds, 
         ])
 
     def step_train(**ctx):
         run_id = ctx["run_id"]
+        ds = ctx["ds"]
+        date_folder = ctx["execution_date"].strftime("%d-%m-%Y")
         _run([
             "python", "/home/airflow/gcs/dags/train_model.py",
             "--project", PROJECT_ID,
@@ -111,6 +140,8 @@ with DAG(
             "--features_table", FEATURES_TBL,
             "--bucket", BUCKET,
             "--run_id", run_id,
+            "--date", ds, 
+            "--date_folder", date_folder
         ])
 
     t_raw_prepare   = PythonOperator(task_id="prepare_raw", python_callable=step_prepare_raw, provide_context=True)

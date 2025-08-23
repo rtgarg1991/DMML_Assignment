@@ -74,8 +74,7 @@ def main(args):
     table_id = f"{args.project}.{args.dataset}.{args.table}"
 
     # Build today's URI: gs://bucket/dd-MM-yyyy/churn_raw.csv
-    date_str = datetime.now().strftime("%d-%m-%Y")
-    gcs_uri = f"gs://{args.bucket}/{date_str}/churn_raw.csv"
+    gcs_uri = f"gs://{args.bucket}/{args.date_folder}/churn_raw.csv"
     print(f"[info] Loading: {gcs_uri}")
 
     # Ensure table exists (created earlier with ingest_date partitioning)
@@ -89,7 +88,7 @@ def main(args):
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.CSV,
         skip_leading_rows=1,
-        autodetect=True,
+        autodetect=False,
         write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
         schema_update_options=[bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION],  # let schema expand
         allow_quoted_newlines=True,
@@ -114,6 +113,7 @@ if __name__ == "__main__":
     ap.add_argument("--table", default="churn_raw")
     ap.add_argument("--bucket", required=True)
     ap.add_argument("--run_id", required=True)
+    ap.add_argument("--date_folder", required=True, help="dd-MM-YYYY")
     args = ap.parse_args()
     try:
         main(args)

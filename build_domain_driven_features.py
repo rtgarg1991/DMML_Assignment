@@ -5,12 +5,12 @@ from google.cloud import bigquery
 # ---------- SQL templates ----------
 
 CREATE_SQL_TMPL = """
-CREATE OR REPLACE TABLE `{p}.{d}.{features}`
+CREATE OR REPLACE TABLE `{p}.{cd}.{features}`
 PARTITION BY ingest_date AS
 WITH stats AS (
   SELECT APPROX_QUANTILES(monthly_charges, 100)[OFFSET(80)] AS p80_monthly
-  FROM `{p}.{d}.{clean}`
-  WHERE ingest_date = CURRENT_DATE()
+  FROM `{p}.{cd}.{clean}`
+  WHERE ingest_date = DATE(@d)
 )
 SELECT
   c.customer_id,
@@ -54,14 +54,14 @@ SELECT
   END AS tenure_bucket,
   (c.monthly_charges > s.p80_monthly) AS is_high_spender,
   c.churn_label,
-  CURRENT_DATE() AS ingest_date
-FROM `{p}.{d}.{clean}` AS c
+  DATE(@d) AS ingest_date
+FROM `{p}.{cd}.{clean}` AS c
 CROSS JOIN stats AS s
-WHERE c.ingest_date = CURRENT_DATE();
+WHERE c.ingest_date = DATE(@d);
 """
 
 APPEND_SQL_TMPL = """
-INSERT INTO `{p}.{d}.{features}` (
+INSERT INTO `{p}.{cd}.{features}` (
   customer_id, tenure, monthly_charges, total_charges, is_senior, has_internet,
   services_count, avg_charges_per_tenure, charges_per_service,
   internet_type, contract_type, payment_method, contract_length_months,
@@ -69,8 +69,8 @@ INSERT INTO `{p}.{d}.{features}` (
 )
 WITH stats AS (
   SELECT APPROX_QUANTILES(monthly_charges, 100)[OFFSET(80)] AS p80_monthly
-  FROM `{p}.{d}.{clean}`
-  WHERE ingest_date = CURRENT_DATE()
+  FROM `{p}.{cd}.{clean}`
+  WHERE ingest_date = DATE(@d)
 )
 SELECT
   c.customer_id,
@@ -114,17 +114,17 @@ SELECT
   END AS tenure_bucket,
   (c.monthly_charges > s.p80_monthly) AS is_high_spender,
   c.churn_label,
-  CURRENT_DATE() AS ingest_date
-FROM `{p}.{d}.{clean}` AS c
+  DATE(@d) AS ingest_date
+FROM `{p}.{cd}.{clean}` AS c
 CROSS JOIN stats AS s
-WHERE c.ingest_date = CURRENT_DATE();
+WHERE c.ingest_date = DATE(@d);
 """
 
 CREATE_VIEW_SQL_TMPL = """
-CREATE OR REPLACE VIEW `{p}.{d}.vw_latest_features` AS
+CREATE OR REPLACE VIEW `{p}.{cd}.vw_latest_features` AS
 SELECT *
-FROM `{p}.{d}.{features}`
-WHERE ingest_date = (SELECT MAX(ingest_date) FROM `{p}.{d}.{features}`);
+FROM `{p}.{cd}.{features}`
+WHERE ingest_date = (SELECT MAX(ingest_date) FROM `{p}.{cd}.{features}`);
 """
 
 # ---------- status helpers ----------
@@ -168,6 +168,7 @@ def main():
     ap.add_argument("--run_id", required=True)
     ap.add_argument("--gate_on", default="validate_clean", choices=["clean","validate_clean"],
                     help="Which prior step to gate on (default: validate_clean)")
+    ap.add_argument("--date", required=True)
     args = ap.parse_args()
 
     client = bigquery.Client(project=args.project)
@@ -191,20 +192,21 @@ def main():
 
         if create_mode:
             # First run or only ingest_date exists → create full table from today's clean
-            sql = CREATE_SQL_TMPL.format(p=args.project, d=args.dataset,
+            sql = CREATE_SQL_TMPL.format(p=args.project, cd=args.dataset,
                                          clean=args.clean_table, features=args.features_table)
-            client.query(sql).result()
+            client.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("d","DATE", args.date)])
+                  ).result()
             action = "created"
         else:
             # Append today's partition
-            sql = APPEND_SQL_TMPL.format(p=args.project, d=args.dataset,
+            sql = APPEND_SQL_TMPL.format(p=args.project, cd=args.dataset,
                                          clean=args.clean_table, features=args.features_table)
-            client.query(sql).result()
+            client.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("d","DATE", args.date)])).result()
             action = "appended"
 
         # Refresh latest view
-        vsql = CREATE_VIEW_SQL_TMPL.format(p=args.project, d=args.dataset, features=args.features_table)
-        client.query(vsql).result()
+        vsql = CREATE_VIEW_SQL_TMPL.format(p=args.project, cd=args.dataset, features=args.features_table)
+        client.query(vsql, job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("d","DATE", args.date)])).result()
 
         write_status(client, args.project, args.dataset, args.run_id, step, "SUCCESS", f"Features {action} & view updated")
         print(f"[done] Features {action}: `{features_fqn}`; view `vw_latest_features` updated.")

@@ -70,6 +70,9 @@ def main():
     ap.add_argument("--out_dir", default="./output/eda_artifacts")
     ap.add_argument("--today_only", action="store_true", default=True,
                     help="Filter ingest_date = CURRENT_DATE() (default True)")
+    ap.add_argument("--date", required=True)
+    ap.add_argument("--date_folder", required=True)
+    
     args = ap.parse_args()
 
     step = "eda"
@@ -85,9 +88,11 @@ def main():
         write_status(bq, args.project, args.dataset, args.run_id, step, "STARTED")
 
         # ---- Load from BigQuery (today only) ----
-        where_clause = "WHERE ingest_date = CURRENT_DATE()" if args.today_only else ""
+        where_clause = "WHERE ingest_date = Date(@d)" if args.today_only else ""
         sql = f"SELECT * FROM `{args.project}.{args.dataset}.{args.table}` {where_clause}"
-        df = bq.query(sql).to_dataframe()
+        df = bq.query(sql,job_config=bigquery.QueryJobConfig(
+                            query_parameters=[bigquery.ScalarQueryParameter("d","DATE", args.date)])
+                    ).to_dataframe()
 
         if df.empty:
             raise RuntimeError("No rows found for today's partition; nothing to analyze.")
@@ -176,8 +181,7 @@ def main():
             plt.close()
 
         # ---- Upload ONLY this run's files ----
-        date_str = datetime.now().strftime("%d-%m-%Y")
-        base_prefix = f"{date_str}/output/eda"
+        base_prefix = f"{args.date_folder}/output/eda"
         upload_dir_to_gcs(run_tmp, args.bucket, base_prefix)
         print(f"\nEDA artifacts uploaded to: gs://{args.bucket}/{base_prefix}")
 
