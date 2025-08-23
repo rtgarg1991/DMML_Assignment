@@ -1,0 +1,57 @@
+
+
+Generate random/corrupt data
+1. Got initial dataset from kaggle
+2. Working Directory DMML Assignment
+3. Set working environment venv, screenshot expand_data_working_environment_venv.png
+4. Created requirements.txt file and installed all the dependencies using command python -m pip install -r requirements.txt. screenshot expand_data_install_requirements.png
+5. ran script to generate random corrupt data using command python inject_telco_corruptions.py to generate random corrupt data. screenshot expand_data_generate_corrupt_data.png
+6. screenshot of random generated data. screenshot expand_data_corrupt_data.png
+7. combined the two data, and generate file Telco_churn_Dataset_final.csv. screenshot expand_data_final_data.png
+
+Upload Raw Dataset
+1. Create BigQuery Dataset. Name: dmml_assignment_churn_raw, Link: https://console.cloud.google.com/bigquery. Screenshot: upload_raw_data_create_dataset.png
+2. Screenshot created dataset. Screenshot: upload_raw_data_created_dataset.png
+3. Create empty table, name: churn_raw. create table pipeline_status to monitor pipeline status. Screenshot: upload_raw_data_create_tables.png
+4. Login to gcloug using command gcloud auth login
+5. It will open a weblink to authorize. Screenshot upload_raw_data_gcloud_auth_login_webpage.png
+6. Authorize and command line will also state the same. Screenshot upload_raw_data_gcloud_auth_login_success.png
+7. set project id, set default application, make sure login is there and token is there and then run the load data python file (load_to_bigquery.py) to load data to the bigquery table. Screenshot upload_raw_data_upload_data.png, upload_raw_data_upload_data2.png
+8. verify the schema is there in bigquery now. screenshot upload_raw_data_verify_schema.png
+9. Check data is there and also check the count of data. screenshot upload_raw_data_view_data.png & upload_raw_data_view_count.png
+
+Create Bucket and Read from there directly
+1. Create a new bucket where we will upload the raw file and out pipeline should run from today's date folder. Screenshot: use_gcp_bucket_create_bucket.png
+2. Create today's date folder 22-08-2025. Screenshot use_gcp_bucket_create_todays_folder.png
+3. Upload raw data file churn_raw.csv to the folder created. Screenshot use_gcp_bucket_upload_todays_raw_data.png
+4. Trunate the entire data. Screenshot: use_gcp_bucket_truncate_bigquery_table.png
+5. Run the Python file load_raw_data_to_bigquery.py to load data to bigquery table after reading from gcp bucket file. Screenshot: use_gcp_bucket_run_load_data_script.png
+6. Verify data and count in bigquery table. Screenshot: use_gcp_bucket_verify_data.png use_gcp_bucket_verify_count.png
+
+Clean data and store in separate table
+1. Run script clean_raw_to_curated.py to clean the data present in raw table, clean it and save it in another table, churn_clean. Screenshot: clean_data_table_clean_data.png
+2. Verify the data and count. Screenshot: clean_data_table_clean_data_data.png clean_data_table_clean_data_count.png
+
+Validate Clean data
+1. Run script validate_clean_data.py , which will analyse some of the columns and prepare a report containing count of null values in those columns and if values are out of range. screenshot: validate_clean_validate.png
+2. validate output file in gcs: screenshot: validate_clean_gcp_bucket.png
+
+Run EDA
+1. run eda . screenshot: eda.png
+2. verify output files in gcp bucket. screenshot: eda_gcp_bucket.png
+3. verify the output and do some analysis. screenshot: eda_male.png, eda_monthly_charges.png, eda_monthly_charges_vs_churn.png, eda_streaming_movies.png, eda_tenure_vs_churn.png, eda_tenure.png
+4. verfify correlation heatmap, shows that charges per service and monthly charges has the most correlation with the churn label. screenshot: eda_correlation_heatmap.png
+
+Domain Driven Feature Engineering
+1. Run script build_features_domain_driven.py to engineer new features based on domain drive data present in the clean table, and save it in another table, churn_feature. Screenshot: feature_engineer_domain_data.png
+2. Verify the data and count. Screenshot: feature_engineer_domain_data_data.png feature_engineer_domain_data_count.png
+
+Train Model
+1. Run script train_model.py to train the model. Screenshot: train_model_run.png
+2. Check accuracy, precision, F1 score etc of the logistic regression and random forest in the metrics.json file in the output folder. Screenshot: train_model_model_metrics.png
+
+
+Metadata
+1. Create table to contain feature metadata
+2. Insert data into metadata table. Screenshot: metadata_table_create.png
+3. select metadata. Screenshot: metadata_table_select.png
