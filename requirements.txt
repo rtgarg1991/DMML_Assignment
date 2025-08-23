@@ -1,0 +1,21 @@
+# Core data stack
+pandas==2.2.2
+numpy==1.26.4
+
+# Visualization
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# Machine learning
+scikit-learn==1.5.2
+joblib==1.4.2
+
+# Data validation
+great-expectations==0.18.12
+
+# Google Cloud / BigQuery
+google-cloud-bigquery==3.25.0
+google-cloud-bigquery-storage==2.25.0
+google-cloud-storage==2.18.2
+db-dtypes==1.2.0
+pyarrow==17.0.0
