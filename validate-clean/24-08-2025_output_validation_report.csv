@@ -1,0 +1,9 @@
+check,result_json
+row_count,"[{""cnt"": 14579}]"
+nulls,"[{""null_tenure"": 560, ""null_gender"": 477, ""null_monthly"": 482, ""null_total"": 505, ""null_senior_citizen"": 481, ""null_churn_label"": 0}]"
+label_values,"[{""churn_label"": 0, ""cnt"": 10694}, {""churn_label"": 1, ""cnt"": 3885}]"
+out_of_range,"[{""bad_tenure"": 194, ""bad_gender"": 0, ""bad_monthly"": 0, ""bad_total"": 0, ""bad_senior_citizen"": 0}]"
+basic_stats,"[{""min_tenure"": -11, ""max_tenure"": 199, ""avg_tenure"": 33.13125044582354, ""min_monthly"": 18.25, ""max_monthly"": 118.75, ""avg_monthly"": 64.69733631269068, ""min_total"": 18.8, ""max_total"": 8684.8, ""avg_total"": 2278.7731313059417}]"
+distinct_counts,"[{""distinct_gender"": 2, ""distinct_internet_service"": 3, ""distinct_contract"": 3, ""distinct_payment_method"": 4}]"
+duplicates,"[{""dupes"": 0}]"
+partitions_present,"[{""ingest_date"": ""2025-08-24""}]"
